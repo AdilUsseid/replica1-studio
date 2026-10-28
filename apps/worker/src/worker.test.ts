@@ -40,3 +40,32 @@ describe("worker", () => {
     expect(jobs.get(j.id).status).toBe("cancelled");
   });
 });
+
+describe("worker: geração de roteiro", () => {
+  it("processa script.generate em segundo plano e cria versão do roteiro", async () => {
+    const { ChannelRepo, IdeaRepo, ScriptRepo } = await import("@replica/core");
+    const db = openDb("", ":memory:");
+    const ch = new ChannelRepo(db, "").create({ name: "C", niche: "N", audience: "A", language: "pt-MZ" });
+    const idea = new IdeaRepo(db).create({ channelId: ch.id, title: "Tema" });
+    const jobs = new JobRepo(db);
+    const j = jobs.enqueue("script.generate", { ideaId: idea.id, adapter: "template" });
+    expect(await runOnce(db)).toBe(true);
+    const r = jobs.get(j.id);
+    expect(r.status).toBe("succeeded");
+    expect((r.result as { version: number }).version).toBe(1);
+    expect(new ScriptRepo(db).state(idea.id).exists).toBe(true);
+  });
+
+  it("falha de geração (adaptador indisponível) fica registada no job", async () => {
+    const { ChannelRepo, IdeaRepo } = await import("@replica/core");
+    const db = openDb("", ":memory:");
+    const ch = new ChannelRepo(db, "").create({ name: "C", niche: "N", audience: "A", language: "pt-MZ" });
+    const idea = new IdeaRepo(db).create({ channelId: ch.id, title: "Tema" });
+    const jobs = new JobRepo(db);
+    const j = jobs.enqueue("script.generate", { ideaId: idea.id, adapter: "ollama" }, { maxAttempts: 1 });
+    await runOnce(db);
+    const r = jobs.get(j.id);
+    expect(r.status).toBe("failed");
+    expect(r.error).toMatch(/OLLAMA_MODEL/);
+  });
+});

@@ -9,3 +9,4 @@ export * from "./migrations.ts";
 export * from "./config.ts";
 export * from "./ideas.ts";
 export * from "./scripts.ts";
+export * from "./generators.ts";

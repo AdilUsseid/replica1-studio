@@ -7,7 +7,7 @@ export async function runOnce(db: Db, handlers: Record<string, Handler> = defaul
   const job = jobs.claimNext(Object.keys(handlers));
   if (!job) return false;
   try {
-    const result = await handlers[job.type]!({ jobs, job });
+    const result = await handlers[job.type]!({ db, jobs, job });
     if (jobs.isCancelRequested(job.id)) jobs.cancelRunning(job.id);
     else jobs.succeed(job.id, result);
   } catch (e) {

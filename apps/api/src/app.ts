@@ -2,7 +2,8 @@ import express, { type ErrorRequestHandler } from "express";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
-  AppError, ChannelRepo, JobRepo, checkFfmpeg, listEvents, conflict, type Db, type JobStatus,
+  AppError, ChannelRepo, IdeaRepo, JobRepo, ScriptRepo, checkFfmpeg, listEvents, listGenerators, getGenerators, conflict,
+  type Db, type JobStatus,
 } from "@replica/core";
 import type { ApiErrorBody } from "@replica/shared";
 
@@ -15,9 +16,11 @@ export interface AppDeps {
   db: Db;
   storageDir: string;
   webDist?: string;
+  /** Variáveis de ambiente para os geradores (OLLAMA_URL/OLLAMA_MODEL). Injetável em testes. */
+  env?: NodeJS.ProcessEnv;
 }
 
-export function createApp({ db, storageDir, webDist }: AppDeps) {
+export function createApp({ db, storageDir, webDist, env = process.env }: AppDeps) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "100kb" }));
@@ -29,7 +32,14 @@ export function createApp({ db, storageDir, webDist }: AppDeps) {
 
   const channels = new ChannelRepo(db, storageDir);
   const jobs = new JobRepo(db);
+  const ideas = new IdeaRepo(db);
+  const scripts = new ScriptRepo(db);
   const api = express.Router();
+  const versionParam = (v: string) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1) throw new AppError(400, "validation_error", "Versão inválida");
+    return n;
+  };
 
   api.get("/health", (_req, res) => {
     const v = db.prepare("SELECT MAX(version) AS v FROM schema_migrations").get() as { v: number };
@@ -45,6 +55,45 @@ export function createApp({ db, storageDir, webDist }: AppDeps) {
   api.patch("/channels/:id", (req, res) => res.json(channels.update(req.params.id, req.body)));
   api.post("/channels/:id/archive", (req, res) => res.json(channels.archive(req.params.id)));
   api.post("/channels/:id/restore", (req, res) => res.json(channels.restore(req.params.id)));
+
+  // Ideias (fila editorial)
+  api.get("/ideas", (req, res) =>
+    res.json(ideas.list({ channelId: req.query.channelId as string | undefined, includeArchived: req.query.archived === "1" })));
+  api.post("/ideas", (req, res) => res.status(201).json(ideas.create(req.body)));
+  api.get("/ideas/:id", (req, res) => res.json(ideas.get(req.params.id)));
+  api.patch("/ideas/:id", (req, res) => res.json(ideas.update(req.params.id, req.body)));
+  api.post("/ideas/:id/move", (req, res) => {
+    const d = req.body?.direction;
+    if (d !== "up" && d !== "down") throw new AppError(400, "validation_error", "Direção inválida", { direction: "Use up ou down" });
+    res.json(ideas.move(req.params.id, d));
+  });
+  api.post("/ideas/:id/archive", (req, res) => res.json(ideas.archive(req.params.id)));
+
+  // Fontes (introdução manual; não há pesquisa web automática)
+  api.get("/ideas/:id/sources", (req, res) => res.json(ideas.sources(req.params.id)));
+  api.post("/ideas/:id/sources", (req, res) => res.status(201).json(ideas.addSource(req.params.id, req.body)));
+  api.patch("/sources/:id", (req, res) => res.json(ideas.updateSource(req.params.id, req.body)));
+  api.delete("/sources/:id", (req, res) => { ideas.removeSource(req.params.id); res.status(204).end(); });
+
+  // Roteiros: versões imutáveis, aprovação ligada à versão exata
+  api.get("/ideas/:id/script", (req, res) => res.json(scripts.state(req.params.id)));
+  api.put("/ideas/:id/script", (req, res) => {
+    const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 300) : "";
+    res.json(scripts.addVersion(req.params.id, { scenes: req.body?.scenes }, "manual", note));
+  });
+  api.get("/ideas/:id/script/versions/:v", (req, res) => res.json(scripts.getVersion(req.params.id, versionParam(req.params.v))));
+  api.post("/ideas/:id/script/versions/:v/approve", (req, res) => res.json(scripts.approve(req.params.id, versionParam(req.params.v))));
+  api.get("/generators", async (_req, res) => res.json(await listGenerators(env)));
+  api.post("/ideas/:id/script/generate", async (req, res) => {
+    const adapter = req.body?.adapter;
+    const idea = ideas.get(req.params.id);
+    const g = typeof adapter === "string" && adapter !== "manual" ? getGenerators(env)[adapter as "template" | "ollama"] : undefined;
+    if (!g) throw new AppError(400, "validation_error", "Gerador desconhecido", { adapter: "Use template ou ollama" });
+    const av = await g.available();
+    if (!av.ok) throw new AppError(409, "generator_unavailable", av.reason ?? "Gerador indisponível");
+    if (jobs.findActiveForIdea("script.generate", idea.id)) throw conflict("Já existe uma geração em curso para esta ideia");
+    res.status(202).json(jobs.enqueue("script.generate", { ideaId: idea.id, adapter }, { channelId: idea.channelId, maxAttempts: 2 }));
+  });
 
   // Jobs
   api.get("/jobs", (req, res) => {

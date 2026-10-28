@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Channels } from "./pages/Channels";
+import { Ideas } from "./pages/Ideas";
 import { Dashboard } from "./pages/Dashboard";
 import { Jobs } from "./pages/Jobs";
 
@@ -8,9 +9,7 @@ const NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "channels", label: "Canais" },
   { id: "jobs", label: "Produções e jobs" },
-  { id: "ideas", label: "Fila de ideias", milestone: "B" },
-  { id: "research", label: "Pesquisa e fontes", milestone: "B" },
-  { id: "scripts", label: "Roteiros", milestone: "B" },
+  { id: "ideas", label: "Ideias, fontes e roteiros" },
   { id: "scenes", label: "Editor de cenas", milestone: "C" },
   { id: "assets", label: "Assets", milestone: "C" },
   { id: "voice", label: "Legendas e narração", milestone: "C" },
@@ -21,12 +20,17 @@ const NAV: NavItem[] = [
   { id: "integrations", label: "Integrações", milestone: "E" },
 ];
 const ready = (id: string) => NAV.some((n) => n.id === id && !n.milestone);
-const fromHash = () => { const h = location.hash.replace("#/", ""); return ready(h) ? h : "dashboard"; };
+const fromHash = () => {
+  const [h = ""] = location.hash.replace("#/", "").split("/");
+  return ready(h) ? h : "dashboard";
+};
+const ideaFromHash = () => { const m = /^#\/ideas\/([\w-]+)$/.exec(location.hash); return m ? m[1]! : null; };
 
 export function App() {
   const [route, setRoute] = useState(fromHash);
+  const [ideaId, setIdeaId] = useState(ideaFromHash);
   useEffect(() => {
-    const on = () => setRoute(fromHash());
+    const on = () => { setRoute(fromHash()); setIdeaId(ideaFromHash()); };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
@@ -50,6 +54,7 @@ export function App() {
       <main>
         {route === "dashboard" && <Dashboard go={go} />}
         {route === "channels" && <Channels />}
+        {route === "ideas" && <Ideas ideaId={ideaId} />}
         {route === "jobs" && <Jobs />}
       </main>
     </div>
