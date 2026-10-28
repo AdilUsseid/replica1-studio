@@ -1,0 +1,30 @@
+{
+  "name": "replica-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma local de produ\u00e7\u00e3o audiovisual assistida por IA",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c blue,green,magenta \"npm run dev -w @replica/api\" \"npm run dev -w @replica/worker\" \"npm run dev -w @replica/web\"",
+    "build": "npm run build -w @replica/web",
+    "start": "concurrently -n api,worker -c blue,green \"npm run start -w @replica/api\" \"npm run start -w @replica/worker\"",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "npm run typecheck && npm test && npm run build && npm run smoke"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
