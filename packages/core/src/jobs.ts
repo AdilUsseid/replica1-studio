@@ -74,6 +74,14 @@ export class JobRepo {
     return rows.map(toJob);
   }
 
+  /** Job ainda pendente (em fila ou a executar) do mesmo tipo e da mesma ideia: evita duplicados. */
+  findActiveForIdea(type: string, ideaId: string): Job | null {
+    const r = this.db
+      .prepare("SELECT * FROM jobs WHERE type=? AND status IN ('queued','running') AND json_extract(params,'$.ideaId')=? LIMIT 1")
+      .get(type, ideaId) as Row | undefined;
+    return r ? toJob(r) : null;
+  }
+
   enqueue(type: string, params: unknown = {}, opts: { channelId?: string; maxAttempts?: number } = {}): Job {
     const id = randomUUID();
     const t = now();

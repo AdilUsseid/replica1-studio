@@ -65,4 +65,64 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_events_job ON events (job_id);
     `,
   },
+  {
+    version: 2,
+    name: "ideas_sources_scripts_approvals",
+    sql: `
+      CREATE TABLE ideas (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL REFERENCES channels(id),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','in_progress','discarded')),
+        position INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        archived_at TEXT
+      );
+      CREATE INDEX idx_ideas_channel ON ideas (channel_id, position);
+
+      CREATE TABLE sources (
+        id TEXT PRIMARY KEY,
+        idea_id TEXT NOT NULL REFERENCES ideas(id),
+        title TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        quote TEXT NOT NULL DEFAULT '',
+        accessed_at TEXT NOT NULL DEFAULT '',   -- fornecida pelo utilizador; vazia se desconhecida
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_sources_idea ON sources (idea_id);
+
+      CREATE TABLE scripts (
+        id TEXT PRIMARY KEY,
+        idea_id TEXT NOT NULL UNIQUE REFERENCES ideas(id),
+        created_at TEXT NOT NULL
+      );
+
+      -- Versões imutáveis: editar cria sempre uma nova versão.
+      CREATE TABLE script_versions (
+        id TEXT PRIMARY KEY,
+        script_id TEXT NOT NULL REFERENCES scripts(id),
+        version INTEGER NOT NULL,
+        content TEXT NOT NULL,                 -- JSON canónico
+        content_hash TEXT NOT NULL,            -- sha256 do conteúdo
+        origin TEXT NOT NULL CHECK (origin IN ('manual','template','ollama')),
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        UNIQUE (script_id, version)
+      );
+
+      CREATE TABLE approvals (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,                    -- 'script' (vídeo/publicação em marcos futuros)
+        target_id TEXT NOT NULL,               -- id da versão exata aprovada
+        content_hash TEXT NOT NULL,
+        approved_at TEXT NOT NULL,
+        invalidated_at TEXT,
+        invalidated_reason TEXT
+      );
+      CREATE INDEX idx_approvals_target ON approvals (kind, target_id);
+    `,
+  },
 ];

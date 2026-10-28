@@ -29,7 +29,7 @@ describe("API", () => {
   it("health", async () => {
     const r = await call("GET", "/api/health");
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ ok: true, schemaVersion: 1 });
+    expect(r.json).toMatchObject({ ok: true, schemaVersion: 2 });
   });
 
   it("CRUD de canais com validação e erros por campo", async () => {

@@ -7,3 +7,5 @@ export * from "./paths.ts";
 export * from "./ffmpeg.ts";
 export * from "./migrations.ts";
 export * from "./config.ts";
+export * from "./ideas.ts";
+export * from "./scripts.ts";
